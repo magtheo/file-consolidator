@@ -28,7 +28,8 @@ class AppMainWindow(tk.Frame):
 
         self.selected_root_dir = None
         self.file_processor = FileProcessor()
-        self.current_tree_data = None # <<< ADD THIS LINE to store tree data
+        self.current_tree_data = None 
+        self.project_specific_ignores = set()
 
         self._create_widgets()
         self._layout_widgets()
@@ -85,3 +86,65 @@ class AppMainWindow(tk.Frame):
         self.output_view.pack(fill=tk.BOTH, expand=True)
         
         self.status_bar.grid(row=2, column=0, sticky="ew")
+
+    def load_project_ignores(self):
+        self.project_specific_ignores.clear()
+        if not self.selected_root_dir: return
+        
+        ignore_file_path = Path(self.selected_root_dir) / self.IGNORE_FILE_NAME
+        if ignore_file_path.is_file():
+            try:
+                with ignore_file_path.open('r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith('#'): # Ignore empty lines and comments
+                            self.project_specific_ignores.add(line)
+                print(f"Loaded {len(self.project_specific_ignores)} patterns from {ignore_file_path}")
+            except Exception as e:
+                print(f"Error loading ignore file {ignore_file_path}: {e}")
+                messagebox.showwarning("Ignore File Error", f"Could not load {self.IGNORE_FILE_NAME}:\n{e}")
+
+    def save_project_ignores(self):
+        if not self.selected_root_dir: return
+        ignore_file_path = Path(self.selected_root_dir) / self.IGNORE_FILE_NAME
+        try:
+            with ignore_file_path.open('w', encoding='utf-8') as f:
+                f.write(f"# Project-specific ignore patterns for {self.master.title()}\n")
+                f.write("# One pattern (relative path from root) per line.\n")
+                for pattern in sorted(list(self.project_specific_ignores)):
+                    f.write(f"{pattern}\n")
+            print(f"Saved {len(self.project_specific_ignores)} patterns to {ignore_file_path}")
+        except Exception as e:
+            print(f"Error saving ignore file {ignore_file_path}: {e}")
+            messagebox.showerror("Ignore File Error", f"Could not save {self.IGNORE_FILE_NAME}:\n{e}")
+
+    def get_relative_path_for_item(self, full_item_path: str) -> str | None:
+        """Converts a full path to a path relative to selected_root_dir."""
+        if not self.selected_root_dir: return None
+        try:
+            root_p = Path(self.selected_root_dir).resolve()
+            item_p = Path(full_item_path).resolve()
+            if item_p.is_relative_to(root_p): # Requires Python 3.9+
+                 return str(item_p.relative_to(root_p))
+            # Fallback for older Python or if not strictly relative (e.g. symlink target outside)
+            # This part might need adjustment based on how symlinks should be treated for ignoring
+            # For simplicity, if it's not directly relative, we might not be able to reliably make it a relative ignore
+            return None 
+        except (ValueError, AttributeError): # AttributeError for older is_relative_to
+             # Fallback for older python:
+            try:
+                return os.path.relpath(full_item_path, self.selected_root_dir)
+            except ValueError:
+                return None # Cannot make relative
+
+    def ignore_folder_and_refresh(self, relative_folder_path: str):
+        if relative_folder_path and relative_folder_path not in self.project_specific_ignores:
+            self.project_specific_ignores.add(relative_folder_path)
+            self.save_project_ignores()
+            event_handlers.handle_refresh_directory(self) # Trigger refresh
+
+    def unignore_folder_and_refresh(self, relative_folder_path: str):
+        if relative_folder_path and relative_folder_path in self.project_specific_ignores:
+            self.project_specific_ignores.remove(relative_folder_path)
+            self.save_project_ignores()
+            event_handlers.handle_refresh_directory(self) # Trigger refresh
