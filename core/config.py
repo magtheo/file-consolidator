@@ -1,35 +1,25 @@
 # core/config.py
+from pathlib import Path
+import appdirs # For user-specific config directory
+
+# Application name for appdirs
+APP_NAME = "LLMContextBuilder"
+APP_AUTHOR = "YourAppNameOrAuthor" # Optional, but good practice
 
 # Default patterns for files and directories to ignore during scanning.
-# Uses fnmatch-style wildcards.
-# Patterns can match file/directory names or relative paths from the root.
 DEFAULT_IGNORE_PATTERNS = [
-    ".git",
-    ".vscode",
-    "__pycache__",
-    "*.pyc",
-    "*.pyo",
-    "*.so",
-    "*.egg-info",
-    "venv/",
-    ".venv/",
-    "env/",
-    ".env/",
-    "node_modules/",
-    "build/",
-    "dist/",
-    ".DS_Store",
-    "Thumbs.db",
-    "*.log",
-    "*.tmp",
-    "*.swp",
-    "*.swo",
+    ".git", ".vscode", "__pycache__", "*.pyc", "*.pyo", "*.so",
+    "*.egg-info", "venv/", ".venv/", "env/", ".env/", "node_modules/",
+    "build/", "dist/", ".DS_Store", "Thumbs.db", "*.log", "*.tmp",
+    "*.swp", "*.swo",
 ]
 
-# Maximum file size in Megabytes to attempt to read.
-# Helps prevent freezing the app when a huge (binary) file is accidentally selected.
 MAX_FILE_SIZE_TO_READ_MB = 5
-
-# Default encoding to try when reading files.
-# 'errors="ignore"' will be used if decoding fails.
 DEFAULT_ENCODING = "utf-8"
+
+# Path for user-specific ignore patterns file
+USER_CONFIG_DIR = Path(appdirs.user_config_dir(APP_NAME, APP_AUTHOR))
+USER_IGNORE_FILE = USER_CONFIG_DIR / "user_ignores.txt"
+
+# Ensure the user config directory exists
+USER_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
