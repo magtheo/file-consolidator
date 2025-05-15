@@ -1,4 +1,5 @@
 # app/event_handlers.py
+import tkinter as tk
 import tkinter.filedialog as filedialog
 import tkinter.messagebox as messagebox
 from pathlib import Path # For getting root directory name
