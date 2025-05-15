@@ -18,8 +18,9 @@ class FileTreeView(ttk.Frame):
     CHECKED_CHAR = "☑ "    # U+2611 BALLOT BOX WITH CHECK
     # Make sure your chosen font supports these characters well!
 
-    def __init__(self, master=None, **kwargs):
-        super().__init__(master, **kwargs)
+    def __init__(self, master=None, app_window=None, **custom_kwargs):
+        self.app_window = app_window
+        super().__init__(master, **custom_kwargs)
 
         self.item_check_states = {} # Stores item_id -> bool (checked True/False)
         self.tree_item_data = {}    # Stores item_id -> original item_data for type info
@@ -257,16 +258,33 @@ class FileTreeView(ttk.Frame):
             self.tree.item(node_id, text=self._get_display_text(node_id, f"[Err] {original_name}"))
 
 
-    def populate_tree(self, directory_data_list):
-        # Clear existing tree and states
-        self.item_check_states.clear()
-        self.tree_item_data.clear()
-        for i in self.tree.get_children():
-            try: self.tree.delete(i)
-            except tk.TclError: pass # Item might already be gone
+    def populate_tree(self, directory_data_list, preserve_state: bool = False):
+        """
+        Clears and populates the tree with new data.
+        directory_data_list: A list of item_data dictionaries from FileProcessor.
+        preserve_state: If True, attempts to preserve open/closed states (currently not implemented beyond accepting the arg).
+        """
         
-        for item_data in directory_data_list:
-            self._insert_item('', item_data)
+        if preserve_state:
+            # TODO: Implement state preservation (e.g., remember open item IDs)
+            # For now, this flag doesn't change behavior, but it's accepted.
+            print("populate_tree called with preserve_state=True (implementation pending)")
+            pass
+
+        # Clear existing tree (standard behavior for now, even with preserve_state=True)
+        for i in self.tree.get_children():
+            self.tree.delete(i)
+
+        # Populate new data
+        if directory_data_list: # Check if there's data to populate
+            for item_data in directory_data_list:
+                self._insert_item('', item_data) # '' is the root
+        else:
+            # Optionally, display a message if the tree is empty
+            # self.tree.insert('', 'end', text="(No files or folders to display)", tags=('empty_message_tag',))
+            pass
+
+
 
     def get_checked_files(self) -> list[str]:
         """Gets paths of all files that are currently checked."""
