@@ -34,7 +34,7 @@ class FileTreeView(ttk.Frame):
             self.font_for_tags = font.Font(family=self.TARGET_FONT_FAMILY, size=self.TARGET_FONT_SIZE)
         except tk.TclError:
             print(f"Warning: Font '{self.TARGET_FONT_FAMILY}' at size {self.TARGET_FONT_SIZE} not found. Falling back.")
-            default_fallback_family = "TkDefaultFont" # Changed fallback
+            default_fallback_family = "TkDefaultFont"
             self.font_for_style = (default_fallback_family, self.TARGET_FONT_SIZE)
             self.font_for_tags = font.Font(family=default_fallback_family, size=self.TARGET_FONT_SIZE)
 
@@ -60,7 +60,6 @@ class FileTreeView(ttk.Frame):
               foreground=[('selected', s.lookup('Treeview', 'foreground')),
                           ('focus', s.lookup('Treeview', 'foreground'))]) # Keep text color same on focus
         s.configure('Treeview.Item', padding=(3,1)) # Item padding (horizontal, vertical)
-
 
         # --- TREEVIEW WIDGET ---
         self.tree = ttk.Treeview(self, selectmode='browse', show='tree') # 'browse' for single item focus
@@ -92,26 +91,9 @@ class FileTreeView(ttk.Frame):
             self.tree.tag_configure('directory', image=self.folder_icon, font=self.font_for_tags)
             self.tree.tag_configure('directory_open', image=self.folder_open_icon, font=self.font_for_tags)
             self.tree.tag_configure('directory_error', image=self.error_icon, font=self.font_for_tags)
-        else: # Configure fonts even if not using icons
+        else:
             for tag_name in ['file', 'directory', 'directory_open', 'directory_error']:
                 self.tree.tag_configure(tag_name, font=self.font_for_tags)
-
-        # --- ICONS & TAGS ---
-        if self.USE_ICONS:
-            self.file_icon = self._load_or_create_icon("file.png", "dodgerblue", icon_size=self.ICON_SIZE)
-            self.folder_icon = self._load_or_create_icon("folder.png", "darkorange", icon_size=self.ICON_SIZE)
-            self.folder_open_icon = self._load_or_create_icon("folder-open.png", "gold", icon_size=self.ICON_SIZE)
-            self.error_icon = self._load_or_create_icon("error.png", "red", icon_size=self.ICON_SIZE)
-
-            self.tree.tag_configure('file', image=self.file_icon, font=self.font_for_tags)
-            self.tree.tag_configure('directory', image=self.folder_icon, font=self.font_for_tags)
-            self.tree.tag_configure('directory_open', image=self.folder_open_icon, font=self.font_for_tags)
-            self.tree.tag_configure('directory_error', image=self.error_icon, font=self.font_for_tags)
-        else:
-            self.tree.tag_configure('file', font=self.font_for_tags)
-            self.tree.tag_configure('directory', font=self.font_for_tags)
-            self.tree.tag_configure('directory_open', font=self.font_for_tags)
-            self.tree.tag_configure('directory_error', font=self.font_for_tags)
 
          # --- CONTEXT MENU ---
         self.context_menu = Menu(self.tree, tearoff=0)
@@ -149,12 +131,12 @@ class FileTreeView(ttk.Frame):
                      loaded_image.put(default_color, to=(offset, offset, offset + dot_size - 1, offset + dot_size - 1))
         return loaded_image
 
-    def _on_open_dir_visuals(self, event): # Renamed
+    def _on_open_dir_visuals(self, event): 
         item_id = self.tree.focus()
         if item_id and self.tree.tag_has('directory', item_id):
             self.tree.item(item_id, tags=('directory_open',))
 
-    def _on_close_dir_visuals(self, event): # Renamed
+    def _on_close_dir_visuals(self, event):
         item_id = self.tree.focus()
         if item_id and self.tree.tag_has('directory_open', item_id):
             self.tree.item(item_id, tags=('directory',))
@@ -262,25 +244,82 @@ class FileTreeView(ttk.Frame):
         """
         Clears and populates the tree with new data.
         directory_data_list: A list of item_data dictionaries from FileProcessor.
-        preserve_state: If True, attempts to preserve open/closed states (currently not implemented beyond accepting the arg).
+        preserve_state: If True, attempts to preserve open/closed states and check states.
         """
         
-        if preserve_state:
-            # TODO: Implement state preservation (e.g., remember open item IDs)
-            # For now, this flag doesn't change behavior, but it's accepted.
-            print("populate_tree called with preserve_state=True (implementation pending)")
-            pass
+        previously_checked_paths = set()
+        previously_open_paths = set()
 
-        # Clear existing tree (standard behavior for now, even with preserve_state=True)
+        if preserve_state:
+            # print("Preserving state: Storing current checked and open items.") # Optional: for debugging
+            # 1. Store checked states by path from the current (old) tree
+            for item_id, is_checked in self.item_check_states.items():
+                if is_checked and self.tree.exists(item_id): # Check if item still exists in the tree
+                    item_data = self.tree_item_data.get(item_id)
+                    if item_data and 'path' in item_data:
+                        previously_checked_paths.add(item_data['path'])
+            
+            # 2. Store open states by path for directories from the current (old) tree
+            def _collect_open_paths_recursive(parent_item_id_in_old_tree):
+                for child_item_id in self.tree.get_children(parent_item_id_in_old_tree):
+                    if self.tree.exists(child_item_id): # Check if item still exists
+                        item_data = self.tree_item_data.get(child_item_id)
+                        # Check if item is a directory type and is currently open (expanded)
+                        if item_data and item_data.get('type') in ('directory', 'directory_error') and \
+                           self.tree.item(child_item_id, "open"):
+                            previously_open_paths.add(item_data['path'])
+                        _collect_open_paths_recursive(child_item_id) # Recurse for children
+            
+            _collect_open_paths_recursive('') # Start from the root of the old tree (parent_id '')
+
+        # Clear existing tree items
         for i in self.tree.get_children():
             self.tree.delete(i)
+        
+        # Clear the state dictionaries as item IDs will be new and data is being replaced
+        self.item_check_states.clear()
+        self.tree_item_data.clear()
 
-        # Populate new data
-        if directory_data_list: # Check if there's data to populate
+        # Populate new data into the tree
+        if directory_data_list:
             for item_data in directory_data_list:
-                self._insert_item('', item_data) # '' is the root
+                self._insert_item('', item_data) # '' is the root. _insert_item populates self.tree_item_data and self.item_check_states
+
+            # 3. Restore states if preserve_state was true, by traversing the NEW tree structure
+            if preserve_state:
+                # print("Preserving state: Restoring checked and open items in new tree.") # Optional: for debugging
+                
+                # Create a temporary path-to-new_item_id mapping for efficient lookup in the new tree
+                # This is built from the newly populated self.tree_item_data
+                path_to_new_item_id = {
+                    data['path']: item_id 
+                    for item_id, data in self.tree_item_data.items() 
+                    if 'path' in data and self.tree.exists(item_id) # Ensure item was actually created
+                }
+
+                # Restore check states using the new item IDs
+                for path in previously_checked_paths:
+                    new_item_id = path_to_new_item_id.get(path)
+                    if new_item_id: # new_item_id will be None if the path no longer exists
+                        self.item_check_states[new_item_id] = True
+                        self._update_item_text(new_item_id) # Update display text for this item
+
+                # Restore open states for directories using the new item IDs
+                for path in previously_open_paths:
+                    new_item_id = path_to_new_item_id.get(path)
+                    if new_item_id: # new_item_id will be None if the path no longer exists
+                        item_info = self.tree_item_data.get(new_item_id)
+                        # Check if it's a directory type before attempting to open
+                        if item_info and item_info.get('type') in ('directory', 'directory_error'):
+                            self.tree.item(new_item_id, open=True)
+                            # Explicitly update the tag for the open directory icon,
+                            # as programmatic open=True might not trigger <<TreeviewOpen>>.
+                            if self.USE_ICONS and self.tree.tag_has('directory', new_item_id):
+                                self.tree.item(new_item_id, tags=('directory_open',))
+                            # For 'directory_error', it will be opened but might not change icon unless handled.
+                # print("State restoration attempt complete.") # Optional: for debugging
         else:
-            # Optionally, display a message if the tree is empty
+            # Optionally, display a message if the tree is empty after clearing
             # self.tree.insert('', 'end', text="(No files or folders to display)", tags=('empty_message_tag',))
             pass
 
@@ -295,3 +334,38 @@ class FileTreeView(ttk.Frame):
                 if item_data and item_data['type'] == 'file':
                     checked_file_paths.add(item_data['path'])
         return sorted(list(checked_file_paths))
+
+    def _expand_all_from_node(self, item_id):
+        """Recursively expands the given item_id and all its descendant directory nodes."""
+        if not self.tree.exists(item_id):
+            return
+
+        item_data = self.tree_item_data.get(item_id)
+        if item_data and item_data.get('type') in ('directory', 'directory_error'):
+            # Open the current node
+            self.tree.item(item_id, open=True)
+            # Update its visual tag if using icons and it's a standard directory
+            if self.USE_ICONS and self.tree.tag_has('directory', item_id):
+                self.tree.item(item_id, tags=('directory_open',))
+            
+            # Recursively expand children
+            for child_id in self.tree.get_children(item_id):
+                self._expand_all_from_node(child_id)
+
+    def _collapse_all_from_node(self, item_id):
+        """Recursively collapses all descendant directory nodes of the given item_id, then the item_id itself."""
+        if not self.tree.exists(item_id):
+            return
+
+        item_data = self.tree_item_data.get(item_id)
+        if item_data and item_data.get('type') in ('directory', 'directory_error'):
+            # Recursively collapse children first
+            for child_id in self.tree.get_children(item_id):
+                self._collapse_all_from_node(child_id)
+            
+            # Then close the current node
+            self.tree.item(item_id, open=False)
+            # Update its visual tag if using icons and it was an open directory
+            if self.USE_ICONS and self.tree.tag_has('directory_open', item_id):
+                self.tree.item(item_id, tags=('directory',))
+            # For directory_error, it will just close; no icon change logic specified for collapse.
