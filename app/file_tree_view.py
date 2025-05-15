@@ -1,6 +1,6 @@
 # app/file_tree_view.py
 import tkinter as tk
-from tkinter import ttk, font
+from tkinter import ttk, font, Menu
 from pathlib import Path
 import os
 
@@ -112,10 +112,15 @@ class FileTreeView(ttk.Frame):
             self.tree.tag_configure('directory_open', font=self.font_for_tags)
             self.tree.tag_configure('directory_error', font=self.font_for_tags)
 
+         # --- CONTEXT MENU ---
+        self.context_menu = Menu(self.tree, tearoff=0)
+        # Context menu items will be added dynamically based on clicked item
+
         # --- EVENT BINDINGS ---
         self.tree.bind("<<TreeviewOpen>>", self._on_open_dir_visuals)
         self.tree.bind("<<TreeviewClose>>", self._on_close_dir_visuals)
         self.tree.bind("<ButtonRelease-1>", self._on_item_click) # Use ButtonRelease for better UX with drag
+        self.tree.bind("<Button-3>", self._on_item_right_click) # For context menu (Button-2 for middle on some systems)
 
     def _load_or_create_icon(self, icon_name: str, default_color: str = "grey", icon_size: int = 16):
         base_path = Path(__file__).parent.parent / "assets"
@@ -179,6 +184,40 @@ class FileTreeView(ttk.Frame):
         
         self._set_check_state_recursive(item_id, new_state)
         self.tree.focus(item_id) # Keep focus on the clicked item
+
+    def _on_item_right_click(self, event):
+        item_id = self.tree.identify_row(event.y)
+        if not item_id: return
+
+        self.tree.focus(item_id) # Focus on the item before showing menu
+        item_data = self.tree_item_data.get(item_id)
+        if not item_data: return
+
+        # Clear previous menu items
+        self.context_menu.delete(0, tk.END)
+
+        if item_data['type'] == 'directory':
+            relative_path = self.app_window.get_relative_path_for_item(item_data['path'])
+            is_ignored = relative_path in self.app_window.project_specific_ignores
+
+            if is_ignored:
+                self.context_menu.add_command(
+                    label=f"Unignore '{item_data['name']}'",
+                    command=lambda p=relative_path: self.app_window.unignore_folder_and_refresh(p)
+                )
+            else:
+                self.context_menu.add_command(
+                    label=f"Ignore '{item_data['name']}'",
+                    command=lambda p=relative_path: self.app_window.ignore_folder_and_refresh(p)
+                )
+            self.context_menu.add_separator()
+        
+        self.context_menu.add_command(label="Expand All", command=lambda: self._expand_all_from_node(item_id))
+        self.context_menu.add_command(label="Collapse All", command=lambda: self._collapse_all_from_node(item_id))
+
+        if self.context_menu.index(tk.END) is not None: # Check if any items were added
+            self.context_menu.tk_popup(event.x_root, event.y_root)
+
 
 
     def _set_check_state_recursive(self, item_id, state):
