@@ -37,7 +37,7 @@ class FileProcessor:
         Combines default ignore patterns with additionally provided ones.
         """
         # Combine default and additional ignore patterns for this scan
-        current_scan_ignore_patterns = list(self.default_ignore_patterns) # Start with a copy of defaults
+        current_scan_ignore_patterns = list(self.ignore_patterns) # Start with a copy of defaults
         if additional_ignore_patterns:
             current_scan_ignore_patterns.extend(p for p in additional_ignore_patterns if p not in current_scan_ignore_patterns)
         
