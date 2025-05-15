@@ -9,46 +9,46 @@ class FileProcessor:
         self.ignore_patterns = config.DEFAULT_IGNORE_PATTERNS
         self.max_file_size_bytes = config.MAX_FILE_SIZE_TO_READ_MB * 1024 * 1024
 
-    def _is_ignored(self, path_obj: Path, root_path_obj: Path) -> bool:
-        """Checks if a path should be ignored based on ignore_patterns."""
+    def _is_ignored(self, path_obj: Path, root_path_obj: Path, current_scan_ignore_patterns: list) -> bool: # Added current_scan_ignore_patterns
+        """Checks if a path should be ignored based on combined ignore_patterns."""
         # Check against item name
-        if any(fnmatch.fnmatch(path_obj.name, pattern) for pattern in self.ignore_patterns):
+        if any(fnmatch.fnmatch(path_obj.name, pattern) for pattern in current_scan_ignore_patterns):
             return True
         # Check against relative path
         try:
             relative_path_str = str(path_obj.relative_to(root_path_obj))
-            if any(fnmatch.fnmatch(relative_path_str, pattern) for pattern in self.ignore_patterns):
+            if any(fnmatch.fnmatch(relative_path_str, pattern) for pattern in current_scan_ignore_patterns):
                 return True
             parts = relative_path_str.split(os.sep)
             current_path_part = ""
             for part in parts:
                 current_path_part = os.path.join(current_path_part, part)
-                # Check for directory patterns like "node_modules/" or "venv/"
-                if any(fnmatch.fnmatch(current_path_part + os.sep, p) for p in self.ignore_patterns if p.endswith(('/', '\\'))):
+                if any(fnmatch.fnmatch(current_path_part + os.sep, p) for p in current_scan_ignore_patterns if p.endswith(('/', '\\'))):
                     return True
-                # Check for exact directory name matches if the item is a directory
-                if path_obj.is_dir() and any(fnmatch.fnmatch(current_path_part, p) for p in self.ignore_patterns if not p.endswith(('/', '\\')) and Path(p).name == current_path_part):
+                if path_obj.is_dir() and any(fnmatch.fnmatch(current_path_part, p) for p in current_scan_ignore_patterns if not p.endswith(('/', '\\')) and Path(p).name == current_path_part):
                     return True
         except ValueError:
             pass
         return False
 
-    def generate_file_tree(self, root_path_str: str, custom_ignore_patterns=None):
-        current_ignore_patterns = custom_ignore_patterns if custom_ignore_patterns is not None else self.ignore_patterns
+    def generate_file_tree(self, root_path_str: str, additional_ignore_patterns: list = None): # Modified signature
+        """
+        Generates a tree-like structure of files and directories.
+        Combines default ignore patterns with additionally provided ones.
+        """
+        # Combine default and additional ignore patterns for this scan
+        current_scan_ignore_patterns = list(self.default_ignore_patterns) # Start with a copy of defaults
+        if additional_ignore_patterns:
+            current_scan_ignore_patterns.extend(p for p in additional_ignore_patterns if p not in current_scan_ignore_patterns)
+        
         root_path = Path(root_path_str).resolve()
         if not root_path.is_dir():
             raise ValueError(f"Provided path '{root_path_str}' is not a valid directory.")
-        
-        # The top-level data structure will represent the root directory itself
-        # and its children will be the items directly under it.
-        # This is a slight change if you expect generate_file_tree to return a list of items *in* root_path.
-        # For format_tree_structure, it's better if it represents the root itself.
-        # Let's adjust it to return a list of items *within* the root, which is what the GUI expects.
-        # The format_tree_structure will then take this list and the root_path name.
 
         tree_data_items = []
         for item in sorted(root_path.iterdir(), key=lambda p: (p.is_file(), p.name.lower())):
-            if self._is_ignored(item, root_path): # Pass root_path for consistent ignoring
+            # Pass the combined ignore patterns to _is_ignored
+            if self._is_ignored(item, root_path, current_scan_ignore_patterns):
                 continue
             item_info = {
                 "name": item.name,
@@ -56,16 +56,19 @@ class FileProcessor:
                 "type": "file" if item.is_file() else "directory"
             }
             if item.is_dir():
-                item_info["children"] = self._generate_subtree(item, root_path, current_ignore_patterns)
+                # Pass combined patterns to subtree generation as well
+                item_info["children"] = self._generate_subtree(item, root_path, current_scan_ignore_patterns)
             tree_data_items.append(item_info)
         
-        return tree_data_items # This is a list of items IN the root_path_str
+        return tree_data_items
 
-    def _generate_subtree(self, dir_path: Path, overall_root_path: Path, ignore_patterns):
+
+    def _generate_subtree(self, dir_path: Path, overall_root_path: Path, current_scan_ignore_patterns: list): # Modified signature
+        """Helper for recursive subtree generation using current scan's ignore patterns."""
         children_data = []
         try:
             for item in sorted(dir_path.iterdir(), key=lambda p: (p.is_file(), p.name.lower())):
-                if self._is_ignored(item, overall_root_path):
+                if self._is_ignored(item, overall_root_path, current_scan_ignore_patterns): # Use passed patterns
                     continue
                 item_info = {
                     "name": item.name,
@@ -73,11 +76,11 @@ class FileProcessor:
                     "type": "file" if item.is_file() else "directory"
                 }
                 if item.is_dir():
-                    item_info["children"] = self._generate_subtree(item, overall_root_path, ignore_patterns)
+                    item_info["children"] = self._generate_subtree(item, overall_root_path, current_scan_ignore_patterns)
                 children_data.append(item_info)
         except PermissionError:
             children_data.append({
-                "name": f"[Access Denied]", # Name of dir_path.name is implicit from parent
+                "name": f"[Access Denied]",
                 "path": str(dir_path.resolve()),
                 "type": "directory_error",
                 "children": []
