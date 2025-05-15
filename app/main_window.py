@@ -1,7 +1,9 @@
 # app/main_window.py
 import tkinter as tk
-from tkinter import ttk, PhotoImage
+from tkinter import ttk, PhotoImage, messagebox
 from pathlib import Path
+import os
+from core import config as core_config
 
 from .file_tree_view import FileTreeView
 from .output_view import OutputView
@@ -10,6 +12,7 @@ from . import event_handlers
 from core.file_processor import FileProcessor 
 
 class AppMainWindow(tk.Frame):
+    IGNORE_FILE_NAME = ".file-consolidator-ignore"
     def __init__(self, master=None):
         super().__init__(master)
         self.master = master
@@ -48,18 +51,34 @@ class AppMainWindow(tk.Frame):
             text="Select Root Directory",
             command=lambda: event_handlers.handle_select_directory(self) 
         )
+
+        # NEW: Create the Refresh Directory button
+        self.btn_refresh_dir = ttk.Button(
+            self.controls_frame,
+            text="Refresh Tree",
+            command=lambda: event_handlers.handle_refresh_directory(self),
+            state=tk.DISABLED # Start disabled until a directory is selected
+        )
+
         self.btn_consolidate = ttk.Button(
             self.controls_frame,
             text="Consolidate Checked Files", # Updated button text
             command=lambda: event_handlers.handle_consolidate_files(self) 
         )
 
+        self.btn_view_ignored = ttk.Button(
+            self.controls_frame,
+            text="View Ignored Patterns",
+            command=self.show_ignored_patterns_window # Link to the new method
+        )
+
+
         # --- Main Paned Window for resizable areas ---
         self.main_paned_window = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
 
         # --- File Tree View (Left Pane) ---
-        self.file_tree_frame = ttk.LabelFrame(self.main_paned_window, text="File Structure (Click to Check/Uncheck)", padding="5") # Updated label
-        self.file_tree_view = FileTreeView(self.file_tree_frame)
+        self.file_tree_frame = ttk.LabelFrame(self.main_paned_window, text="File Structure (Check/Uncheck)", padding="5")
+        self.file_tree_view = FileTreeView(self.file_tree_frame, app_window=self) 
         self.main_paned_window.add(self.file_tree_frame, weight=1) 
 
         # --- Output View (Right Pane) ---
@@ -79,7 +98,10 @@ class AppMainWindow(tk.Frame):
 
         self.controls_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
         self.btn_select_dir.pack(side=tk.LEFT, padx=(0, 5))
+        self.btn_refresh_dir.pack(side=tk.LEFT, padx=(0, 5)) 
         self.btn_consolidate.pack(side=tk.LEFT)
+        self.btn_view_ignored.pack(side=tk.LEFT, padx=(0, 5))
+
 
         self.main_paned_window.grid(row=1, column=0, sticky="nsew", padx=5, pady=(0,5))
         self.file_tree_view.pack(fill=tk.BOTH, expand=True)
@@ -148,3 +170,100 @@ class AppMainWindow(tk.Frame):
             self.project_specific_ignores.remove(relative_folder_path)
             self.save_project_ignores()
             event_handlers.handle_refresh_directory(self) # Trigger refresh
+
+    def get_all_current_ignore_patterns(self) -> dict:
+        """
+        Returns a dictionary with 'default' and 'project_specific' ignore patterns.
+        """
+        return {
+            "default": list(core_config.DEFAULT_IGNORE_PATTERNS), # Get from core.config
+            "project_specific": sorted(list(self.project_specific_ignores))
+        }
+
+    def show_ignored_patterns_window(self):
+        ignored_patterns_data = self.get_all_current_ignore_patterns()
+
+        top = tk.Toplevel(self.master)
+        top.title("Ignored Patterns")
+        top.geometry("600x500") # Slightly larger for editing
+        top.transient(self.master)
+        # top.grab_set() # Let's make it non-modal for now to allow interaction with main window if needed,
+                       # but be careful if main window actions affect this dialog's data.
+                       # If strictly modal is preferred, uncomment grab_set().
+
+        # --- Frame for Default Patterns (Read-Only) ---
+        default_frame = ttk.LabelFrame(top, text="Default Ignore Patterns (Read-Only)", padding=5)
+        default_frame.pack(padx=10, pady=(10,5), fill="x", expand=False)
+
+        default_text_area = tk.Text(default_frame, wrap=tk.WORD, font=("TkDefaultFont", 10), height=8)
+        default_scrollbar = ttk.Scrollbar(default_frame, orient='vertical', command=default_text_area.yview)
+        default_text_area.configure(yscrollcommand=default_scrollbar.set)
+        default_text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        default_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        if ignored_patterns_data["default"]:
+            for pattern in ignored_patterns_data["default"]:
+                default_text_area.insert(tk.END, f"{pattern}\n")
+        else:
+            default_text_area.insert(tk.END, "(None)\n")
+        default_text_area.config(state=tk.DISABLED)
+
+        # --- Frame for Project-Specific Patterns (Editable) ---
+        project_frame = ttk.LabelFrame(top, text="Project-Specific Ignores (Editable)", padding=5)
+        project_frame.pack(padx=10, pady=5, fill="both", expand=True)
+
+        self.project_ignore_text_area = tk.Text(project_frame, wrap=tk.WORD, font=("TkDefaultFont", 10)) # Store as instance var
+        project_scrollbar = ttk.Scrollbar(project_frame, orient='vertical', command=self.project_ignore_text_area.yview)
+        self.project_ignore_text_area.configure(yscrollcommand=project_scrollbar.set)
+        self.project_ignore_text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        project_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        if self.selected_root_dir:
+            if ignored_patterns_data["project_specific"]:
+                for pattern in ignored_patterns_data["project_specific"]:
+                    self.project_ignore_text_area.insert(tk.END, f"{pattern}\n")
+            else:
+                self.project_ignore_text_area.insert(tk.END, "# Add project-specific patterns here, one per line.\n# Lines starting with # are comments.\n")
+            self.project_ignore_text_area.config(state=tk.NORMAL)
+        else:
+            self.project_ignore_text_area.insert(tk.END, "(Select a project root directory first to edit specific ignores.)\n")
+            self.project_ignore_text_area.config(state=tk.DISABLED)
+
+
+        # --- Buttons Frame ---
+        buttons_frame = ttk.Frame(top, padding=(0, 5, 0, 10))
+        buttons_frame.pack(fill="x", side=tk.BOTTOM)
+
+        def save_project_ignores_from_dialog():
+            if not self.selected_root_dir:
+                messagebox.showwarning("No Project", "Cannot save, no project directory selected.", parent=top)
+                return
+
+            new_patterns_text = self.project_ignore_text_area.get("1.0", tk.END)
+            new_patterns_set = set()
+            for line in new_patterns_text.splitlines():
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    new_patterns_set.add(line)
+            
+            self.project_specific_ignores = new_patterns_set # Update the set in AppMainWindow
+            self.save_project_ignores() # Use existing save method
+            
+            messagebox.showinfo("Saved", f"Project-specific ignore patterns saved to\n{Path(self.selected_root_dir) / self.IGNORE_FILE_NAME}", parent=top)
+            
+            # Refresh the tree view in the main window
+            if hasattr(event_handlers, 'handle_refresh_directory'):
+                 event_handlers.handle_refresh_directory(self)
+            top.destroy() # Close dialog after saving
+
+
+        save_button = ttk.Button(buttons_frame, text="Save Project Ignores & Close", command=save_project_ignores_from_dialog)
+        save_button.pack(side=tk.RIGHT, padx=5)
+        if not self.selected_root_dir: # Disable save if no project selected
+            save_button.config(state=tk.DISABLED)
+
+        cancel_button = ttk.Button(buttons_frame, text="Cancel", command=top.destroy)
+        cancel_button.pack(side=tk.RIGHT)
+
+        top.protocol("WM_DELETE_WINDOW", top.destroy) # Handle window close button
+        top.focus_set()
