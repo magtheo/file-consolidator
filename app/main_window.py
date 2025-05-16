@@ -13,9 +13,10 @@ from core.file_processor import FileProcessor
 
 class AppMainWindow(tk.Frame):
     IGNORE_FILE_NAME = ".file-consolidator-ignore"
-    def __init__(self, master=None):
+    def __init__(self, master=None, root_window=None):
         super().__init__(master)
         self.master = master
+        self.root_window = root_window if root_window else master
         self.master.title("LLM Context Builder")
         
         icon_path = Path(__file__).parent.parent / "assets" / "icon.png"
@@ -52,7 +53,7 @@ class AppMainWindow(tk.Frame):
             command=lambda: event_handlers.handle_select_directory(self) 
         )
 
-        # NEW: Create the Refresh Directory button
+        # Refresh Directory button
         self.btn_refresh_dir = ttk.Button(
             self.controls_frame,
             text="Refresh Tree",
@@ -83,7 +84,7 @@ class AppMainWindow(tk.Frame):
 
         # --- Output View (Right Pane) ---
         self.output_frame = ttk.LabelFrame(self.main_paned_window, text="Consolidated Output", padding="5")
-        self.output_view = OutputView(self.output_frame)
+        self.output_view = OutputView(self.output_frame, root_window=self.root_window)
         self.main_paned_window.add(self.output_frame, weight=2)
 
         # --- Status Bar ---
