@@ -15,6 +15,7 @@ A simple Python GUI application to help you select files from a project, view th
 *   Python 3.7+
 *   Tkinter (usually included with Python)
 *   `pyperclip` library
+*   PyQt6
 
 ## Installation
 
