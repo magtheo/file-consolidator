@@ -4,6 +4,7 @@ from PyQt6.QtGui import QDrag, QCursor
 from PyQt6.QtCore import Qt, QMimeData, QUrl
 import tempfile
 import os
+import stat
 from utils import clipboard_helper # Can still use this
 
 class OutputViewQt(QWidget):
@@ -50,44 +51,58 @@ class OutputViewQt(QWidget):
     def copy_content(self):
         text_to_copy = self.get_text()
         if text_to_copy:
-            clipboard_helper.copy_to_clipboard(text_to_copy) # Or use QApplication.clipboard()
+            clipboard_helper.copy_to_clipboard(text_to_copy)
             original_text = self.btn_copy.text()
             self.btn_copy.setText("Copied!")
-            # Use QTimer for delayed reset if desired
-            self.btn_copy.repaint() # Ensure text update is visible
+            self.btn_copy.repaint()
             QApplication.processEvents()
-            self.app_window.status_bar.showMessage("Content copied to clipboard.", 2000) # Show for 2s
-            # Reset button text after a delay (e.g., using QTimer)
-            # For simplicity, you might just leave it or reset on next action
+            if self.app_window and hasattr(self.app_window, 'status_bar'): # Check if app_window and status_bar exist
+                self.app_window.status_bar.showMessage("Content copied to clipboard.", 2000)
+            # Consider using QTimer to reset button text:
+            # from PyQt6.QtCore import QTimer
+            # QTimer.singleShot(2000, lambda: self.btn_copy.setText(original_text))
         else:
             QMessageBox.information(self, "Clipboard", "Nothing to copy.")
 
-    # --- Drag and Drop Implementation ---
     def _prepare_temp_file_for_drag(self) -> bool:
         content = self.get_text()
         if not content:
             QMessageBox.information(self, "Drag File", "Output is empty, nothing to drag.")
             return False
-        self._cleanup_temp_drag_file()
+        self._cleanup_temp_drag_file() # Cleanup previous temp file if any
         try:
+            # Create a temporary file. mkstemp returns a low-level file handle and an absolute pathname.
             fd, self._temp_drag_file_path = tempfile.mkstemp(suffix=".txt", prefix="consolidated_output_", text=False)
-            with os.fdopen(fd, "wb") as f:
+            
+            # Write content to the temporary file using the file descriptor
+            with os.fdopen(fd, "wb") as f: # 'wb' for binary mode, content encoded to utf-8
                 f.write(content.encode('utf-8'))
+            
+            # IMPORTANT: Set permissions to make it readable by other applications.
+            # tempfile.mkstemp usually creates files with 0o600 (owner read/write).
+            # We change it to 0o644 (owner:rw, group:r, other:r) to allow other processes to read it.
+            os.chmod(self._temp_drag_file_path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH) # This is 0o644
+            print(f"Prepared temp file for drag: {self._temp_drag_file_path}, permissions set to rw-r--r--")
+
             return True
         except Exception as e:
             QMessageBox.critical(self, "Drag File Error", f"Could not create temporary file for dragging: {e}")
-            self._temp_drag_file_path = None
+            self._temp_drag_file_path = None # Ensure it's cleared on error
             return False
+
 
     def _cleanup_temp_drag_file(self):
         if self._temp_drag_file_path:
             path_to_remove = self._temp_drag_file_path
-            self._temp_drag_file_path = None
+            self._temp_drag_file_path = None # Important: clear path before attempting removal
             try:
                 if os.path.exists(path_to_remove):
                     os.remove(path_to_remove)
+                    print(f"Cleaned up temp drag file: {path_to_remove}") # For logging
             except Exception as e:
+                # This is not critical if cleanup fails, but good to log.
                 print(f"Error cleaning up temporary drag file {path_to_remove}: {e}")
+
 
     def _drag_mouse_press(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
