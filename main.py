@@ -1,26 +1,17 @@
 # main.py
-import tkinter as tk
-from app.main_window import AppMainWindow
-
-_tkinterdnd2_module_imported = False
-try:
-    import tkinterdnd2 # Step 1: Try to import the module
-    _tkinterdnd2_module_imported = True
-except ImportError:
-    print("Warning: tkinterdnd2 module not found. File dragging will not be available.")
-    print("Install it with: pip install tkinterdnd2")
-
+import sys
+from PyQt6.QtWidgets import QApplication
+# from app.main_window_qt import AppMainWindowQt # We'll create this new file
+# For now, let's assume AppMainWindowQt will be in main_window.py
+from app.main_window_qt import AppMainWindowQt # Or whatever you rename your Qt main window class to
 
 if __name__ == "__main__":
-    if _tkinterdnd2_module_imported:
-        # Step 2: If import succeeded, use tkinterdnd2.Tk() to create the root window.
-        # This is the standard way to get a DND-enabled root.
-        root = tkinterdnd2.Tk()
-        print("Using tkinterdnd2.Tk() as root window for DND.")
-    else:
-        # Fallback to standard tk.Tk if tkinterdnd2 module couldn't be imported.
-        root = tk.Tk()
-        print("Using standard tk.Tk(). File dragging will be disabled.")
-    
-    app = AppMainWindow(master=root)
-    root.mainloop()
+    # QApplication instance is required for any Qt GUI application
+    app = QApplication(sys.argv)
+
+    # Create and show your main window
+    main_window_qt = AppMainWindowQt()
+    main_window_qt.show()
+
+    # Start the Qt event loop
+    sys.exit(app.exec())
