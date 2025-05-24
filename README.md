@@ -2,7 +2,8 @@
 
 A simple Python GUI application to help you select files from a project, view their structure, and consolidate their content into a single text block. This text can then be easily copied and pasted into a Large Language Model (LLM) as context for development tasks.
 
-![image](https://github.com/user-attachments/assets/a0d533a8-3888-4288-897e-c72b260a9122)
+![image](https://github.com/user-attachments/assets/d949f080-d1c8-412d-81a4-32727df3826d)
+
 
 
 ## Features
